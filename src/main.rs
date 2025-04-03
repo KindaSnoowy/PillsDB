@@ -1,6 +1,6 @@
-use std::{collections::HashMap, io::{self, Take}, str, u8};
+use std::{collections::HashMap, io, str, u8};
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum DataType {
     String  = 0,
     Int     = 1,
@@ -8,51 +8,50 @@ enum DataType {
     Bool    = 3,
 }
 
+#[derive(Debug)]
 struct DbValue {
     typetag: DataType,
     data: Vec<u8>,
 }
 
-// == To set data types easily. ==
+
 impl DbValue {
-    fn from_str(&self, s: &str) -> Self {
-        let data = s.as_bytes().to_vec();
+
+// == To set data types easily. ==
+
+    fn from_str(s: &str) -> Self {
         DbValue {
             typetag: DataType::String,
-            data,
+            data: s.as_bytes().to_vec(),
         }
     }
 
-    fn from_i32(&self, i: i32) -> Self {
-        let data = i.to_string().as_bytes().to_vec();
+    fn from_i64(i: i64) -> Self {
         DbValue {
             typetag: DataType::Int,
-            data,
+            data: i.to_string().as_bytes().to_vec(),
         }
     }
 
-    fn from_f32(&self, f: f32) -> Self {
-        let data = f.to_string().as_bytes().to_vec();
+    fn from_f64(f: f64) -> Self {
         DbValue {
             typetag: DataType::Float,
-            data,
+            data: f.to_string().as_bytes().to_vec(),
         }
     }
 
-    fn from_bool(&self, b: bool) -> Self {
-        let data = if b { "true" } else { "false" }.as_bytes().to_vec();
+    fn from_bool(b: bool) -> Self {
         DbValue {
             typetag: DataType::Bool,
-            data,
+            data: if b { "true" } else { "false" }.as_bytes().to_vec(),
         }
     }
-}
 
 // == To get data types easily. ==
-impl DbValue {
+
     fn as_string(&self) -> Option<&str> {
         if self.typetag == DataType::String {
-            std::str::from_utf8(&self.data).ok()
+            Some(str::from_utf8(&self.data).unwrap())
         } else {
             None
         }
@@ -107,56 +106,79 @@ fn main() {
     let mut db = Database::new();
     
     loop {
-        let mut input = String::new(); 
+        let mut input = String::new();  
         io::stdin().read_line(&mut input).expect("Failed to read line");
         let input = input.trim().split(" ").collect::<Vec<&str>>();
 
-        match input[0] { // <== INPUT[0] = COMMAND
-            "GET" | "get" => {
+        if input.is_empty() {
+            continue;
+        }
+
+        match input[0].to_uppercase().as_str() { // <== INPUT[0] = COMMAND
+            "GET" => {
                 if input.len() < 2 {
                     println!("Usage: GET <key>");
                     continue;
                 }
 
-                let var = match db.get(input[1]) {
-                    Some(var) => var,
-                    None => {
-                        println!("Key not found");
-                        continue;
+                match db.get(input[1]) {
+                    Some(value) => {
+                        match value.typetag {
+                            DataType::String => println!("{}: {}", input[1], value.as_string().unwrap()),
+                            DataType::Int => println!("{}: {}", input[1], value.as_int().unwrap()),
+                            DataType::Float => println!("{}: {}", input[1], value.as_float().unwrap()),
+                            DataType::Bool => println!("{}: {}", input[1], value.as_bool().unwrap()),
+                        }
                     },
-                };
-                let var = match str::from_utf8(&var.value) {
-                    Ok(v) => v,
-                    Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-                };
-            
-                println!("GET:TYPE {}:{} => {}", input[1], var);
-            },
-            "SET" | "set" => {
-                if input.len() < 3 {
-                    println!("Usage: SET <key:type> <value>");
-                    continue;
+                    None => println!("Key not found"),
                 }
-                let key =  match input[1].to_string();
-                let vartype = match key.split(":").nth(1) {
-                    Some(t) => t,
-                    None => {
-                        println!("Usage: SET <key:type> <value>");
-                        continue;
-                    }
+            },
+            "SET" => {
+                if input.len() < 3 {
+                    println!("Usage: SET <key> <type> <value>");
+                    println!("Types: str, int, float, bool");
+                    continue;
                 };
-                let value = input[2].to_string().to_lowercase();
-                let hash_value = match vartype {
-                    "str" | "string" => HashValue { vartype: 0, value: value.into_bytes() },
-                    "i32" | "int" => HashValue { vartype: 1, value: value.into_bytes() },
-                    "f32" | "float" => HashValue { vartype: 2, value: value.into_bytes() },
+                
+                let key = input[1].to_string();
+                let value_type = input[2].to_lowercase();
+                let value_str = input[3..].join(" ");
+
+                let value = match value_type.as_str() {
+                    "str" | "string" => DbValue::from_str(&value_str),
+                    "int" | "i64" => match value_str.parse::<i64>() {
+                        Ok(i) => DbValue::from_i64(i),
+                        Err(_) => {
+                            println!("Invalid integer value");
+                            continue;
+                        }
+                    },
+                    "float" | "f64" => match value_str.parse::<f64>() {
+                        Ok(f) => DbValue::from_f64(f),
+                        Err(_) => {
+                            println!("Invalid float value");
+                            continue;
+                        }
+                    },
+                    "bool" => match value_str.parse::<bool>() {
+                        Ok(b) => DbValue::from_bool(b),
+                        Err(_) => {
+                            println!("Invalid boolean value (use 'true' or 'false')");
+                            continue;
+                        }
+                    },
                     _ => {
-                        println!("Invalid type");
+                        println!("Invalid type. Use: str, int, float, bool");
                         continue;
                     }
                 };
-                db.set(key);
-                println!("SET {} => {}", input[1], value);
+                db.set(key, value);
+                println!("SET successful");
+            },
+            "DEBUG" => {
+                for (key, value) in &db.db {
+                    println!("{}: {:?}", key, value);
+                }
             },
             _ => {
                 println!("Unknown command")
