@@ -1,11 +1,11 @@
 use std::{collections::HashMap, io, str, u8};
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 enum DataType {
-    String  = 0,
-    Int     = 1,
-    Float   = 2,
-    Bool    = 3,
+    String = 0,
+    Int = 1,
+    Float = 2,
+    Bool = 3,
 }
 
 #[derive(Debug)]
@@ -14,10 +14,8 @@ struct DbValue {
     data: Vec<u8>,
 }
 
-
 impl DbValue {
-
-// == To set data types easily. ==
+    // == To set data types easily. ==
 
     fn from_str(s: &str) -> Self {
         DbValue {
@@ -29,14 +27,14 @@ impl DbValue {
     fn from_i64(i: i64) -> Self {
         DbValue {
             typetag: DataType::Int,
-            data: i.to_string().as_bytes().to_vec(),
+            data: i.to_ne_bytes().to_vec(),
         }
     }
 
     fn from_f64(f: f64) -> Self {
         DbValue {
             typetag: DataType::Float,
-            data: f.to_string().as_bytes().to_vec(),
+            data: f.to_ne_bytes().to_vec(),
         }
     }
 
@@ -47,7 +45,9 @@ impl DbValue {
         }
     }
 
-// == To get data types easily. ==
+    //todo --> fn from_hex(hex: &str) -> Self {}
+
+    // == To get data types easily. ==
 
     fn as_string(&self) -> Option<&str> {
         if self.typetag == DataType::String {
@@ -58,7 +58,8 @@ impl DbValue {
     }
 
     fn as_int(&self) -> Option<i64> {
-        if self.typetag == DataType::Int && self.data.len() == 8 { // i64 and f64 are always 8 bytes.
+        if self.typetag == DataType::Int && self.data.len() == 8 {
+            // i64 and f64 are always 8 bytes.
             Some(i64::from_ne_bytes(self.data[..8].try_into().unwrap()))
         } else {
             None
@@ -66,7 +67,8 @@ impl DbValue {
     }
 
     fn as_float(&self) -> Option<f64> {
-        if self.typetag == DataType::Float && self.data.len() == 8 { // i64 and f64 are always 8 bytes.
+        if self.typetag == DataType::Float && self.data.len() == 8 {
+            // i64 and f64 are always 8 bytes.
             Some(f64::from_ne_bytes(self.data[..8].try_into().unwrap()))
         } else {
             None
@@ -88,9 +90,7 @@ struct Database {
 
 impl Database {
     fn new() -> Self {
-        Database {
-            db: HashMap::new()
-        }
+        Database { db: HashMap::new() }
     }
 
     fn get(&self, key: &str) -> Option<&DbValue> {
@@ -104,17 +104,20 @@ impl Database {
 
 fn main() {
     let mut db = Database::new();
-    
+
     loop {
-        let mut input = String::new();  
-        io::stdin().read_line(&mut input).expect("Failed to read line");
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
         let input = input.trim().split(" ").collect::<Vec<&str>>();
 
         if input.is_empty() {
             continue;
         }
 
-        match input[0].to_uppercase().as_str() { // <== INPUT[0] = COMMAND
+        match input[0].to_uppercase().as_str() {
+            // <== INPUT[0] = COMMAND
             "GET" => {
                 if input.len() < 2 {
                     println!("Usage: GET <key>");
@@ -123,23 +126,30 @@ fn main() {
 
                 match db.get(input[1]) {
                     Some(value) => {
+                        println!("{:?}", value);
                         match value.typetag {
-                            DataType::String => println!("{}: {}", input[1], value.as_string().unwrap()),
+                            DataType::String => {
+                                println!("{}: {}", input[1], value.as_string().unwrap())
+                            }
                             DataType::Int => println!("{}: {}", input[1], value.as_int().unwrap()),
-                            DataType::Float => println!("{}: {}", input[1], value.as_float().unwrap()),
-                            DataType::Bool => println!("{}: {}", input[1], value.as_bool().unwrap()),
+                            DataType::Float => {
+                                println!("{}: {}", input[1], value.as_float().unwrap())
+                            }
+                            DataType::Bool => {
+                                println!("{}: {}", input[1], value.as_bool().unwrap())
+                            }
                         }
-                    },
+                    }
                     None => println!("Key not found"),
                 }
-            },
+            }
             "SET" => {
                 if input.len() < 3 {
                     println!("Usage: SET <key> <type> <value>");
                     println!("Types: str, int, float, bool");
                     continue;
                 };
-                
+
                 let key = input[1].to_string();
                 let value_type = input[2].to_lowercase();
                 let value_str = input[3..].join(" ");
@@ -174,12 +184,16 @@ fn main() {
                 };
                 db.set(key, value);
                 println!("SET successful");
-            },
+            }
             "DEBUG" => {
-                for (key, value) in &db.db {
-                    println!("{}: {:?}", key, value);
+                for (_key, value) in &db.db {
+                    let mut hex_string = format!("{:02x}", value.typetag.clone() as u8);
+                    for byte in &value.data {
+                        hex_string.push_str(&format!("{:02x}", byte));
+                    }
+                    println!("hex: {}", hex_string);
                 }
-            },
+            }
             _ => {
                 println!("Unknown command")
             }
